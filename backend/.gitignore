@@ -1,0 +1,12 @@
+myenv/
+.env
+__pycache__/
+*.pyc
+test_db.py
+test_knowledge.py
+test-ai.py
+
+README.md
+docs/
+frontend/
+knowledge/
