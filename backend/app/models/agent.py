@@ -3,6 +3,8 @@ from sqlalchemy.orm import Mapped,mapped_column
 from sqlalchemy import Integer,DateTime,String
 
 from datetime import datetime,timezone
+
+
 class Agent(Base):
     __tablename__="agents"
 
@@ -24,6 +26,6 @@ class Agent(Base):
 
     created_at: Mapped[datetime]= mapped_column(
         DateTime,
-        default=datetime.now(timezone.utc),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )

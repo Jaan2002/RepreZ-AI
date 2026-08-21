@@ -9,3 +9,4 @@ class BusinessKnowledge(BaseModel):
     description: Optional[str] = Field(default=None)
     services: Optional[list[str]] = Field(default=None)
     additional_information: Optional[str] = Field(default=None)
+    is_confirmed: bool = False
