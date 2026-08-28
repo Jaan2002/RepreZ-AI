@@ -9,6 +9,7 @@ from app.models.agent import Agent
 from app.ai.client import onboarding_chat, extract_business_knowledge, is_confirmation
 from app.models.onboarding import OnboardingMessage
 from app.models.business_knowledge import BusinessKnowledge
+from app.schemas.knoweldge import BusinessKnowledgeUpdate
 
 router = APIRouter(
     prefix='/agents',
@@ -95,6 +96,7 @@ def onboarding_chat_endpoint(agent_id:int,request:OnboardingChatRequest,db: Sess
      # Get AI response
      reply = onboarding_chat(
          agent_id=agent_id,
+         business_name=agent.business_name,
          message=request.message,
          history=history
      )
@@ -139,11 +141,11 @@ def onboarding_chat_endpoint(agent_id:int,request:OnboardingChatRequest,db: Sess
 
      user_text = request.message.strip().lower()
 
-     is_confirmation = any(
+     confirmation_detected = any(
          phrase in user_text for phrase in confirmation_words
      )
 
-     if knowledge and confirmation_words:
+     if knowledge and confirmation_detected:
          knowledge.is_confirmed = True
 
          db.commit()
@@ -151,47 +153,54 @@ def onboarding_chat_endpoint(agent_id:int,request:OnboardingChatRequest,db: Sess
          return{
              "reply" :" Perfect! Your business information has been confirmed. Your AI Representative is now ready."
          }
-     
+         
 
      # Extract business information from owner's message
-     extracted = extract_business_knowledge(request.message)
+    #  extracted = extract_business_knowledge(request.message)
 
-    #  # Build the complete conversation
-    #  conversation = "\n".join(
-    #     f"{message.role}: {message.content}"
-    #     for message in previous_messages
-    #  )
+     # Build the complete conversation
+     conversation = "\n".join(
+        f"{message.role}: {message.content}"
+        for message in previous_messages
+     )
 
-    #  # Include the current user message
-    #  conversation += f"\nuser: {request.message}"
+     # Include the current user message
+     conversation += f"\nuser: {request.message}"
 
-    #  # Extract business information from the complete conversation
-    #  extracted = extract_business_knowledge(conversation)
+     try:
+        # Extract business information from the complete conversation
+        extracted = extract_business_knowledge(conversation)
+     except Exception as e:
+          print("========== KNOWLEDGE EXTRACTION FAILED ==========")
+          print(e)
+          print("=================================================")
+          return {"reply": reply}
 
-    #  # Check if knowledge already exists for this agent
-    #  knowledge = db.scalars(
-    #      select(BusinessKnowledge)
-    #      .where(BusinessKnowledge.agent_id == agent_id)
-    #  ).first()
+
+     # Check if knowledge already exists for this agent
+     knowledge = db.scalars(
+         select(BusinessKnowledge)
+         .where(BusinessKnowledge.agent_id == agent_id)
+     ).first()
 
      if knowledge is None:
          # Create first knowledge record
          knowledge = BusinessKnowledge(
              agent_id = agent_id,
-             business_name = extracted.business_name,
+             business_name = agent.business_name,
              business_type = extracted.business_type,
              location = extracted.location,
              description = extracted.description,
              services = extracted.services,
              additional_information = extracted.additional_information,
-             is_confirmation=False
+             is_confirmed=False
          )
 
          db.add(knowledge)
      else:
          # Update only information that was actually provided
-         if extracted.business_name is not None:
-             knowledge.business_name =extracted.business_name
+        #  if extracted.business_name is not None:
+        #      knowledge.business_name =extracted.business_name
 
          if extracted.business_type is not None:
              knowledge.business_type = extracted.business_type
@@ -211,7 +220,7 @@ def onboarding_chat_endpoint(agent_id:int,request:OnboardingChatRequest,db: Sess
              knowledge.additional_information = extracted.additional_information
 
          # New information means confirmation must be done again
-         knowledge.is_confirmed = True
+         knowledge.is_confirmed = False
         
     #  if is_confirmation(request.message):
     #      knowledge.is_confirmed = True
@@ -222,3 +231,121 @@ def onboarding_chat_endpoint(agent_id:int,request:OnboardingChatRequest,db: Sess
      return{ "reply": reply}
 
 
+@router.get("/{agent_id}/knowledge")
+def get_business_knowledge(
+    agent_id: int,
+    db: Session = Depends(get_db)
+):
+    # Check agent exists
+    agent = db.get(Agent, agent_id)
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Agent not found"
+        )
+
+    # Get Merchant Brain
+    knowledge = db.scalars(
+        select(BusinessKnowledge)
+        .where(BusinessKnowledge.agent_id == agent_id)
+    ).first()
+
+    if knowledge is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Business Knowledge not found"
+        )
+
+    return knowledge
+
+@router.put("/{agent_id}/knowledge/edit")
+def update_business_knowledge(
+    agent_id: int,
+    knowledge_data: BusinessKnowledgeUpdate,
+    db: Session = Depends(get_db)
+):
+    # Check agent exists
+    agent = db.get(Agent, agent_id)
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Agent not found"
+        )
+
+    # Get Merchant Brain
+    knowledge = db.scalars(
+        select(BusinessKnowledge)
+        .where(BusinessKnowledge.agent_id == agent_id)
+    ).first()
+
+    if knowledge is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Business Knowledge not found"
+        )
+
+    # Update only fields that were provided
+    if knowledge_data.business_name is not None:
+        knowledge.business_name = knowledge_data.business_name
+
+    if knowledge_data.business_type is not None:
+        knowledge.business_type = knowledge_data.business_type
+
+    if knowledge_data.location is not None:
+        knowledge.location = knowledge_data.location
+
+    if knowledge_data.description is not None:
+        knowledge.description = knowledge_data.description
+
+    if knowledge_data.services is not None:
+        knowledge.services = knowledge_data.services
+
+    if knowledge_data.additional_information is not None:
+        knowledge.additional_information = (
+            knowledge_data.additional_information
+        )
+
+    # Any manual change requires reconfirmation
+    knowledge.is_confirmed = False
+
+    db.commit()
+    db.refresh(knowledge)
+
+    return knowledge
+
+@router.post("/{agent_id}/knowledge/confirm")
+def confirm_business_knowledge(
+    agent_id: int,
+    db: Session = Depends(get_db)
+):
+    agent = db.get(Agent, agent_id)
+
+    if agent is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Agent not found"
+        )
+
+    knowledge = db.scalars(
+        select(BusinessKnowledge)
+        .where(BusinessKnowledge.agent_id == agent_id)
+    ).first()
+
+    if knowledge is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Business Knowledge not found"
+        )
+
+    knowledge.is_confirmed = True
+
+    db.commit()
+    db.refresh(knowledge)
+
+    return {
+        "message": "Business information confirmed successfully",
+        "agent_id": agent_id,
+        "is_confirmed": knowledge.is_confirmed
+    }

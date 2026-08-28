@@ -17,3 +17,4 @@ class OnboardingChatRequest(BaseModel):
 
 class OnboardingChatResponse(BaseModel):
     reply: str
+
