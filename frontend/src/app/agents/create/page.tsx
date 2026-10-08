@@ -1,4 +1,3 @@
-
 "use client";
 
 import { FormEvent, useState } from "react";
@@ -9,6 +8,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 type AgentResponse = {
   id: number;
   business_name: string;
+  status: string;
+  created_at: string;
 };
 
 export default function CreateAgentPage() {
@@ -18,8 +19,20 @@ export default function CreateAgentPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
+  function handleBusinessNameChange(value: string) {
+    setBusinessName(value);
+
+    if (error) {
+      setError("");
+    }
+  }
+
   async function handleCreateAgent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (creating) {
+      return;
+    }
 
     const trimmedBusinessName = businessName.trim();
 
@@ -28,9 +41,14 @@ export default function CreateAgentPage() {
       return;
     }
 
+    if (trimmedBusinessName.length < 2) {
+      setError("Business name must be at least 2 characters.");
+      return;
+    }
+
     if (!API_URL) {
       setError(
-        "NEXT_PUBLIC_API_URL is not configured. Check your frontend .env.local file."
+        "The frontend API URL is not configured. Please check your .env.local file."
       );
       return;
     }
@@ -52,25 +70,38 @@ export default function CreateAgentPage() {
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
-          data?.detail || "Unable to create your AI Representative."
-        );
+        const message =
+          typeof data?.detail === "string"
+            ? data.detail
+            : "Unable to create your AI Representative.";
+
+        throw new Error(message);
       }
 
       const agent: AgentResponse = data;
 
-      console.log("Created agent:", agent);
-      console.log("Redirecting to:", `/agents/${agent.id}/train`);
+      if (!agent?.id) {
+        throw new Error(
+          "The representative was created, but the server returned an invalid response."
+        );
+      }
+
       router.push(`/agents/${agent.id}/train`);
     } catch (error) {
       console.error("Create agent error:", error);
 
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while creating your AI Representative."
-      );
-    } finally {
+      if (error instanceof TypeError) {
+        setError(
+          "Could not connect to Reprez. Make sure the backend is running."
+        );
+      } else {
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Something went wrong while creating your AI Representative."
+        );
+      }
+
       setCreating(false);
     }
   }
@@ -86,8 +117,10 @@ export default function CreateAgentPage() {
         {/* Header */}
         <header className="flex items-center justify-between">
           <button
+            type="button"
             onClick={() => router.back()}
-            className="group flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm backdrop-blur transition hover:border-gray-300 hover:bg-white"
+            disabled={creating}
+            className="group flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm backdrop-blur transition hover:border-gray-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="transition-transform group-hover:-translate-x-1">
               ←
@@ -138,7 +171,7 @@ export default function CreateAgentPage() {
                     key={number}
                     className="flex items-center gap-4 text-sm font-medium text-gray-700"
                   >
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-xs font-bold text-purple-600 shadow-sm ring-1 ring-gray-100">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-xs font-bold text-purple-600 shadow-sm ring-1 ring-gray-100">
                       {number}
                     </div>
 
@@ -165,7 +198,7 @@ export default function CreateAgentPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleCreateAgent}>
+              <form onSubmit={handleCreateAgent} noValidate>
                 <label
                   htmlFor="businessName"
                   className="text-sm font-semibold text-gray-800"
@@ -175,19 +208,30 @@ export default function CreateAgentPage() {
 
                 <input
                   id="businessName"
+                  name="businessName"
                   type="text"
                   value={businessName}
-                  onChange={(event) => setBusinessName(event.target.value)}
+                  onChange={(event) =>
+                    handleBusinessNameChange(event.target.value)
+                  }
                   placeholder="e.g. Bean Theory"
                   disabled={creating}
                   autoFocus
+                  autoComplete="organization"
                   minLength={2}
                   maxLength={100}
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? "create-agent-error" : undefined}
                   className="mt-3 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-base text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-purple-400 focus:ring-4 focus:ring-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
                 {error && (
-                  <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  <div
+                    id="create-agent-error"
+                    role="alert"
+                    aria-live="polite"
+                    className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600"
+                  >
                     {error}
                   </div>
                 )}
@@ -199,7 +243,10 @@ export default function CreateAgentPage() {
                 >
                   {creating ? (
                     <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      <span
+                        aria-hidden="true"
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                      />
                       Creating your representative...
                     </>
                   ) : (
@@ -227,4 +274,8 @@ export default function CreateAgentPage() {
     </main>
   );
 }
+
+
+
+
 

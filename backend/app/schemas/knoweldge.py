@@ -22,3 +22,21 @@ class BusinessKnowledgeUpdate(BaseModel):
     description: Optional[str] = None
     services: Optional[list[str]] = None
     additional_information: Optional[str] = None
+
+# new version
+class ExtractedKnowledgeEntry(BaseModel):
+    category: str
+    title: Optional[str] = None
+    content: str
+    metadata: Optional[dict] = None
+
+
+class ExtractedBusinessProfile(BaseModel):
+    business_type: Optional[str] = None
+    location: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ExtractedBusinessData(BaseModel):
+    profile: ExtractedBusinessProfile
+    knowledge: list[ExtractedKnowledgeEntry] = Field(default_factory=list)
